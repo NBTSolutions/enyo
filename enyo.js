@@ -11,13 +11,13 @@
 				src = s.getAttribute("src") || "";
 				if (src.slice(-l) == inName) {
 					s.located = true;
-                    var path = null;
-                    if (src.search("file:/") === 0) {
-                        path = "/" + src.slice("file:/".length);
-                    }
-                    else {
-                        path = src;
-                    }
+					var path = null;
+					if (src.search("file:/") === 0) {
+						path = "/" + src.slice("file:/".length);
+					}
+					else {
+						path = src;
+					}
 					return {path: path.slice(0, Math.max(0, path.lastIndexOf("/"))), node: s};
 				}
 			}
