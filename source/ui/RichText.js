@@ -29,14 +29,14 @@ enyo.kind({
 	//* Set to true to focus this control when it is rendered.
 	defaultFocus: false,
 	//* @protected
-	statics: {
+	protectedStatics: {
 		osInfo: [
 			{os: "android", version: 3},
 			{os: "ios", version: 5}
 		],
 		//* Returns true if the platform has contenteditable attribute.
 		hasContentEditable: function() {
-			for (var i=0, t, m; t=enyo.RichText.osInfo[i]; i++) {
+			for (var i=0, t; (t=enyo.RichText.osInfo[i]); i++) {
 				if (enyo.platform[t.os] < t.version) {
 					return false;
 				}
@@ -44,13 +44,18 @@ enyo.kind({
 			return true;
 		}
 	},
-	kind: enyo.Input,
+	kind: "enyo.Input",
 	attributes: {
 		contenteditable: true
 	},
 	handlers: {
 		onfocus: "focusHandler",
-		onblur: "blurHandler"
+		onblur: "blurHandler",
+		onkeyup: "updateValue",
+		oncut: "updateValueAsync",
+		onpaste: "updateValueAsync",
+		// prevent oninput handler from being called lower in the inheritance chain
+		oninput: null
 	},
 	// create RichText as a div if platform has contenteditable attribute, otherwise create it as a textarea
 	create: function() {
@@ -59,28 +64,30 @@ enyo.kind({
 	},
 	// simulate onchange event that inputs expose
 	focusHandler: function() {
-		this._value = this.getValue();
+		this._value = this.get("value");
 	},
 	blurHandler: function() {
-		if (this._value !== this.getValue()) {
+		if (this._value !== this.get("value")) {
 			this.bubble("onchange");
 		}
 	},
 	valueChanged: function() {
-		if (this.hasFocus()) {
+		var val = this.get("value");
+		if (this.hasFocus() && val !== this.node.innerHTML) {
 			this.selectAll();
-			this.insertAtCursor(this.value);
-		} else {
-			this.setPropertyValue("content", this.value, "contentChanged");
+			this.insertAtCursor(val);
+		} else if(!this.hasFocus()) {
+			this.set("content", val);
 		}
+	},
+	updateValue: function() {
+		var val = this.node.innerHTML;
+		this.set("value", val);
+	},
+	updateValueAsync: function() {
+		enyo.asyncMethod(this.bindSafely("updateValue"));
 	},
 	//* @public
-	//* Gets value of the RichText.
-	getValue: function() {
-		if (this.hasNode()) {
-			return this.node.innerHTML;
-		}
-	},
 	//* Returns true if the RichText is focused.
 	hasFocus: function() {
 		if (this.hasNode()) {

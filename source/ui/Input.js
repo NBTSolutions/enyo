@@ -1,6 +1,6 @@
 /**
 	_enyo.Input_ implements an HTML &lt;input&gt; element with cross-platform
-	support for	change events.
+	support for change events.
 
 	You can listen for _oninput_ and _onchange_ DOM events from this control
 	to know when the text inside has been modified. _oninput_ fires immediately,
@@ -15,7 +15,7 @@ enyo.kind({
 	name: "enyo.Input",
 	published: {
 		/**
-			Value of the input.  Use this property only to initialize the value.
+			Value of the input. Use this property only to initialize the value.
 			Call _getValue_ and _setValue_ to manipulate the value at runtime.
 		*/
 		value: "",
@@ -28,10 +28,12 @@ enyo.kind({
 		*/
 		type: "",
 		/**
-			When true, prevents input into the control. This maps to the 
+			When true, prevents input into the control. This maps to the
 			_disabled_ DOM attribute.
 		*/
-		disabled: false
+		disabled: false,
+		//* When true, select the contents of the input when it gains focus.
+		selectOnFocus: false
 	},
 	events: {
 		//* Fires when the input is disabled or enabled.
@@ -42,11 +44,8 @@ enyo.kind({
 	//* @protected
 	tag: "input",
 	classes: "enyo-input",
-	attributes: {
-		onfocus: enyo.bubbler,
-		onblur: enyo.bubbler
-	},
 	handlers: {
+		onfocus: "focused",
 		oninput: "input",
 		onclear: "clear",
 		ondragstart: "dragstart"
@@ -54,6 +53,9 @@ enyo.kind({
 	create: function() {
 		if (enyo.platform.ie) {
 			this.handlers.onkeyup = "iekeyup";
+		}
+		if (enyo.platform.windowsPhone) {
+			this.handlers.onkeydown = "iekeydown";
 		}
 		this.inherited(arguments);
 		this.placeholderChanged();
@@ -65,6 +67,14 @@ enyo.kind({
 	},
 	rendered: function() {
 		this.inherited(arguments);
+
+		enyo.makeBubble(this, "focus", "blur");
+
+		//Force onchange event to be bubbled inside Enyo for IE8
+		if(enyo.platform.ie == 8){
+			this.setAttribute("onchange", enyo.bubbler);
+		}
+
 		this.disabledChanged();
 		if (this.defaultFocus) {
 			this.focus();
@@ -80,12 +90,11 @@ enyo.kind({
 		this.setAttribute("disabled", this.disabled);
 		this.bubble("onDisabledChange");
 	},
-	getValue: function() {
-		return this.getNodeProperty("value", this.value);
-	},
 	valueChanged: function() {
 		this.setAttribute("value", this.value);
-		this.setNodeProperty("value", this.value);
+		if (this.getNodeProperty("value", this.value) !== this.value) {
+			this.setNodeProperty("value", this.value);
+		}
 	},
 	iekeyup: function(inSender, inEvent) {
 		var ie = enyo.platform.ie, kc = inEvent.keyCode;
@@ -94,16 +103,38 @@ enyo.kind({
 			this.bubble("oninput", inEvent);
 		}
 	},
+	iekeydown: function(inSender, inEvent) {
+		var wp = enyo.platform.windowsPhone, kc = inEvent.keyCode, dt = inEvent.dispatchTarget;
+		// onchange event fails to fire on enter key for Windows Phone 8, so we force blur
+		if (wp <= 8 && kc == 13 && this.tag == "input" && dt.hasNode()) {
+			dt.node.blur();
+		}
+	},
 	clear: function() {
 		this.setValue("");
 	},
-	focus: function() {
-		if (this.hasNode()) {
-			this.node.focus();
-		}
-	},
 	// note: we disallow dragging of an input to allow text selection on all platforms
 	dragstart: function() {
-		return true;
+		return this.hasFocus();
+	},
+	focused: function() {
+		if (this.selectOnFocus) {
+			enyo.asyncMethod(this, "selectContents");
+		}
+	},
+	selectContents: function() {
+		var n = this.hasNode();
+
+		if (n && n.setSelectionRange) {
+			n.setSelectionRange(0, n.value.length);
+		} else if (n && n.createTextRange) {
+			var r = n.createTextRange();
+			r.expand("textedit");
+			r.select();
+		}
+	},
+	input: function() {
+		var val = this.getNodeProperty("value");
+		this.setValue(val);
 	}
 });

@@ -1,20 +1,101 @@
-﻿//* @public
+﻿//*@protected
+/**
+	Default properties of enyo kinds to concatenate as opposed to
+	overwriting. These are automatically used unless explicitly
+	removed.
+*/
+enyo.concat = ["concat"];
+
+//*@protected
+/**
+	Is called during kind-initialization to make sure that any property
+	noted to be concatenated will be (must be an array) so that those values
+	will not be lost by subclasses overriding that property.
+*/
+enyo.handleConcatenatedProperties = function (ctor, proto) {
+	var properties = enyo.merge(ctor.concat || [], proto.concat || []);
+	var prop;
+	var right;
+	var left;
+	while (properties.length) {
+		prop = properties.shift();
+		left = ctor[prop];
+		right = proto[prop];
+		if ((left instanceof Array) && (right instanceof Array)) {
+			ctor[prop] = enyo.merge(left, right);
+			// remove the reference to the property so it will not
+			// conflict later
+			delete proto[prop];
+		}
+	}
+};
+
+//* @public
 /**
 	Creates a JavaScript constructor function with a prototype defined by
-	_inProps_.
+	_inProps_. __All constructors must have a unique name__.
 
 	_enyo.kind_ makes it easy to build a constructor-with-prototype (like a
 	class) that has advanced features like prototype-chaining (inheritance).
-	
+
 	A plug-in system is included for extending the abilities of the kind
-	generator, and constructors	are allowed to perform custom operations when
+	generator, and constructors are allowed to perform custom operations when
 	subclassed.
+
+	If you make changes to _enyo.kind_, be sure to add or update the appropriate
+	[unit tests](https://github.com/enyojs/enyo/tree/master/tools/test/core/tests).
 
 	For more information, see the documentation on
 	[Creating Kinds](https://github.com/enyojs/enyo/wiki/Creating-Kinds)
-	in the Enyo	Developer Guide.
+	in the Enyo Developer Guide.
 */
 enyo.kind = function(inProps) {
+	var name = inProps.name || "";
+	// cannot defer unnamed kinds, kinds with static sections, or ones with
+	// noDefer flag set
+	if (name && !inProps.noDefer && !inProps.statics) {
+		// make a deferred constructor to avoid a lot of kind
+		// processing if we're never used
+		var ctor = function DeferredCtor() {
+			var FinalCtor;
+			// check for cached final constructor first, used mainly when
+			// developers directly use kind names in their components instead of
+			// strings that are resolved at runtime.
+			if (DeferredCtor._FinalCtor) {
+				FinalCtor = DeferredCtor._FinalCtor;
+			} else {
+				if (!(this instanceof DeferredCtor)) {
+					throw "enyo.kind: constructor called directly, not using 'new'";
+				}
+				FinalCtor = DeferredCtor._finishKindCreation();
+			}
+			var obj = enyo.delegate(FinalCtor.prototype);
+			FinalCtor.apply(obj, arguments);
+			return obj;
+		};
+		ctor._finishKindCreation = function() {
+			ctor._finishKindCreation = undefined;
+			enyo.setPath(name, undefined);
+			var FinalCtor = enyo.kind.finish(inProps);
+			ctor._FinalCtor = FinalCtor;
+			inProps = null;
+			return FinalCtor;
+		};
+		if ((name && !enyo.getPath(name)) || enyo.kind.allowOverride) {
+			enyo.setPath(name, ctor);
+		}
+		else if (name) {
+			enyo.error("enyo.kind: " + name + " is already in use by another " +
+				"kind, all kind definitions must have unique names.");
+		}
+		return ctor;
+	} else {
+		// create anonymous kinds immediately
+		return enyo.kind.finish(inProps);
+	}
+};
+//* @protected
+enyo.kind.finish = function(inProps) {
 	// kind-name to constructor map could be faulty now that a new kind exists, so we simply destroy the memoizations
 	enyo._kindCtors = {};
 	// extract 'name' property
@@ -30,7 +111,8 @@ enyo.kind = function(inProps) {
 	// if we have an explicit kind property with value undefined, we probably
 	// tried to reference  a kind that is not yet in scope
 	if (hasKind && kind === undefined || base === undefined) {
-		throw "enyo.kind: Attempt to subclass an undefined kind. Check dependencies for [" + (name || "<unnamed>") + "].";
+		var problem = kind === undefined ? 'undefined kind' : 'unknown kind (' + kind + ')';
+		throw "enyo.kind: Attempt to subclass an " + problem + ". Check dependencies for [" + (name || "<unnamed>") + "].";
 	}
 	// make a boilerplate constructor
 	var ctor = enyo.kind.makeCtor();
@@ -42,10 +124,24 @@ enyo.kind = function(inProps) {
 	// create our prototype
 	//ctor.prototype = isa ? enyo.delegate(isa) : {};
 	enyo.setPrototype(ctor, isa ? enyo.delegate(isa) : {});
+
+	// there are special cases where a base class has a property
+	// that may need to be concatenated with a subclasses implementation
+	// as opposed to completely overwriting it...
+	enyo.handleConcatenatedProperties(ctor.prototype, inProps);
+
 	// put in our props
 	enyo.mixin(ctor.prototype, inProps);
 	// alias class name as 'kind' in the prototype
-	ctor.prototype.kindName = name;
+	// but we actually only need to set this if a new name was used
+	// not if it is inheriting from a kind anonymously
+	if (name) {
+		ctor.prototype.kindName = name;
+	}
+	// this is for anonymous constructors
+	else {
+		ctor.prototype.kindName = base && base.prototype? base.prototype.kindName: "";
+	}
 	// cache superclass constructor
 	ctor.prototype.base = base;
 	// reference our real constructor
@@ -53,15 +149,24 @@ enyo.kind = function(inProps) {
 	// support pluggable 'features'
 	enyo.forEach(enyo.kind.features, function(fn){ fn(ctor, inProps); });
 	// put reference into namespace
-	enyo.setObject(name, ctor);
+	if ((name && !enyo.getPath(name)) || enyo.kind.allowOverride) {
+		enyo.setPath(name, ctor);
+	}
+	else if (name) {
+		enyo.error("enyo.kind: " + name + " is already in use by another " +
+			"kind, all kind definitions must have unique names.");
+	}
 	return ctor;
 };
 
+//* @public
 /**
-	Creates a Singleton
-	
+	Creates a Singleton of a given kind with a given definition.
+	__The name property will be the instance name of the singleton
+	and must be unique__.
+
 		enyo.singleton({
-			kind: Control,
+			kind: "enyo.Control",
 			name: "app.MySingleton",
 			published: {
 				value: "foo"
@@ -70,7 +175,7 @@ enyo.kind = function(inProps) {
 				//...
 			}
 		});
-		
+
 		app.MySingleton.makeSomething();
 		app.MySingleton.setValue("bar");
 */
@@ -79,20 +184,23 @@ enyo.singleton = function(conf, context) {
 	var name = conf.name;
 	delete(conf.name);
 	// create an unnamed kind and save its constructor's function
-	var kind = enyo.kind(conf);
+	var Kind = enyo.kind(conf);
+	var inst;
 	// create the singleton with the previous name and constructor
-	enyo.setObject(name, new kind(), context);
+	enyo.setPath.call(context || enyo.global, name, (inst = new Kind()));
+	return inst;
 };
 
 //* @protected
 enyo.kind.makeCtor = function() {
-	return function() {
-		if (!(this instanceof arguments.callee)) {
+	return function ctor() {
+		if (!(this instanceof ctor)) {
 			throw "enyo.kind: constructor called directly, not using 'new'";
 		}
 
 		// two-pass instantiation
 		var result;
+		var cargs = arguments;
 		if (this._constructor) {
 			// pure construction
 			result = this._constructor.apply(this, arguments);
@@ -102,6 +210,11 @@ enyo.kind.makeCtor = function() {
 			// post-constructor initialization
 			this.constructed.apply(this, arguments);
 		}
+
+		for (var idx = 0; idx < enyo.kind.postConstructors.length; ++idx) {
+			enyo.kind.postConstructors[idx].apply(this, cargs);
+		}
+
 		if (result) {
 			return result;
 		}
@@ -116,6 +229,13 @@ enyo.kind.defaultNamespace = "enyo";
 //
 enyo.kind.features = [];
 
+
+//*@protected
+/**
+	Post-initialize functions (after constructor has completed).
+*/
+enyo.kind.postConstructors = [];
+
 //
 // 'inherited' feature
 //
@@ -125,13 +245,14 @@ enyo.kind.features.push(function(ctor, props) {
 		proto.inherited = enyo.kind.inherited;
 	}
 	if (proto.base) {
-		// decorate function properties to support inherited (do this ex post facto so that ctor.prototype is known, relies on elements in props being copied by reference)
+		// decorate function properties to support inherited (do this ex post facto so that
+		// ctor.prototype is known, relies on elements in props being copied by reference)
 		for (var n in props) {
 			var p = props[n];
 			if (enyo.isFunction(p)) {
-				p._inherited = proto.base.prototype[n] || enyo.nop;
+				p._inherited = proto.base.prototype[n];
 				// FIXME: we used to need some extra values for inherited, then inherited got cleaner
-				// but in the meantime we used these values to support logging in Object. 
+				// but in the meantime we used these values to support logging in Object.
 				// For now we support this legacy situation, by suppling logging information here.
 				p.nom = proto.kindName + '.' + n + '()';
 			}
@@ -139,8 +260,29 @@ enyo.kind.features.push(function(ctor, props) {
 	}
 });
 
-enyo.kind.inherited = function(args, newArgs) {
-	return args.callee._inherited.apply(this, newArgs || args);
+//*@protected
+/**
+	This method is called by enyo.Object's attempting to
+	access super-methods of a parent class (kind) by calling
+	_this.inherited(arguments)_ from within a kind method. This
+	can only be done safely when there is known to be a super
+	class with the same method.
+*/
+enyo.kind.inherited = function (originals, replacements) {
+	// one-off methods are the fast track
+	var target = originals.callee;
+	var fn = target._inherited;
+
+	// regardless of how we got here, just ensure we actually
+	// have a function to call or else we throw a console
+	// warning to notify developers they are calling a
+	// super method that doesn't exist
+	if ("function" === typeof fn) {
+		return fn.apply(this, replacements? enyo.mixin(originals, replacements): originals);
+	} else {
+		enyo.warn("enyo.kind.inherited: unable to find requested " +
+			"super-method from -> " + originals.callee.nom + " in " + this.kindName);
+	}
 };
 
 //
@@ -148,11 +290,21 @@ enyo.kind.inherited = function(args, newArgs) {
 //
 enyo.kind.features.push(function(ctor, props) {
 	// install common statics
-	enyo.mixin(ctor, enyo.kind.statics);
+	if (!ctor.subclass) {
+		ctor.subclass = enyo.kind.statics.subclass;
+	}
+	if (!ctor.extend) {
+		ctor.extend = enyo.kind.statics.extend;
+	}
 	// move props statics to constructor
 	if (props.statics) {
 		enyo.mixin(ctor, props.statics);
 		delete ctor.prototype.statics;
+	}
+	// also support protectedStatics which won't interfere with defer
+	if (props.protectedStatics) {
+		enyo.mixin(ctor, props.protectedStatics);
+		delete ctor.prototype.protectedStatics;
 	}
 	// allow superclass customization
 	var base = ctor.prototype.base;
@@ -164,9 +316,12 @@ enyo.kind.features.push(function(ctor, props) {
 
 enyo.kind.statics = {
 	subclass: function(ctor, props) {
-		//console.log("subclassing [" + ctor.prototype.kind + "] from [", this.prototype.kind + "]");
+		//enyo.log("subclassing [" + ctor.prototype.kind + "] from [", this.prototype.kind + "]");
 	},
 	extend: function(props) {
+		// make sure to allow concatenated properties to function
+		// as expected
+		enyo.handleConcatenatedProperties(this.prototype, props);
 		enyo.mixin(this.prototype, props);
 		// support pluggable 'features'
 		var ctor = this;
@@ -174,38 +329,59 @@ enyo.kind.statics = {
 	}
 };
 
-// 
+enyo.checkConstructor = function(inKind) {
+	if (enyo.isFunction(inKind)) {
+		// if a deferred enyo kind, finish that work first
+		if (inKind._FinalCtor) {
+			return inKind._FinalCtor;
+		}
+		if (inKind._finishKindCreation) {
+			return inKind._finishKindCreation();
+		}
+	}
+	return inKind;
+};
+
+//
 // factory for kinds identified by strings
-// 
+//
 enyo._kindCtors = {};
 
 enyo.constructorForKind = function(inKind) {
-	if (inKind === null || enyo.isFunction(inKind)) {
-		// in inKind is a function or explicitly null, then that's ctor, full stop.
+	if (inKind === null) {
 		return inKind;
+	} else if (inKind === undefined) {
+		return enyo.defaultCtor;
 	}
-	if (inKind) {
-		// use memoized constructor if available...
-		var ctor = enyo._kindCtors[inKind];
-		if (ctor) {
-			return ctor;
-		}
-		// otherwise look it up and memoize what we find
-		//
-		// if inKind is an object in enyo, say "Control", then ctor = enyo["Control"]
-		// if inKind is a path under enyo, say "Heritage.Button", then ctor = enyo["Heritage.Button"] || enyo.Heritage.Button
-		// if inKind is a fully qualified path, say "enyo.Heritage.Button", then ctor = enyo["enyo.Heritage.Button"] || enyo.enyo.Heritage.Button || enyo.Heritage.Button
-		//
-		// Note that kind "Foo" will resolve to enyo.Foo before resolving to global "Foo".
-		// This is important so "Image" will map to built-in Image object, instead of enyo.Image control.
-		return enyo._kindCtors[inKind] = enyo.Theme[inKind] || enyo[inKind] || enyo.getObject(inKind, false, enyo) || window[inKind] || enyo.getObject(inKind);
+	else if (enyo.isFunction(inKind)) {
+		return enyo.checkConstructor(inKind);
 	}
-	return enyo.defaultCtor;
+
+	// use memoized constructor if available...
+	var ctor = enyo._kindCtors[inKind];
+	if (ctor) {
+		return ctor;
+	}
+	// otherwise look it up and memoize what we find
+	//
+	// if inKind is an object in enyo, say "Control", then ctor = enyo["Control"]
+	// if inKind is a path under enyo, say "Heritage.Button", then ctor = enyo["Heritage.Button"] || enyo.Heritage.Button
+	// if inKind is a fully qualified path, say "enyo.Heritage.Button", then ctor = enyo["enyo.Heritage.Button"] || enyo.enyo.Heritage.Button || enyo.Heritage.Button
+	//
+	// Note that kind "Foo" will resolve to enyo.Foo before resolving to global "Foo".
+	// This is important so "Image" will map to built-in Image object, instead of enyo.Image control.
+	ctor = enyo.Theme[inKind] || enyo[inKind] || enyo.getPath.call(enyo, inKind, true) || window[inKind] || enyo.getPath(inKind);
+	// if this is a deferred kind, run the follow-up code then refetch the kind's constructor
+	if (ctor && ctor._finishKindCreation) {
+		ctor = ctor._finishKindCreation();
+	}
+	enyo._kindCtors[inKind] = ctor;
+	return ctor;
 };
 
-// 
+//
 // namespace for current theme ("enyo.Theme.Button" references the Button specialization for the current theme)
-// 
+//
 enyo.Theme = {};
 
 enyo.registerTheme = function(inNamespace) {

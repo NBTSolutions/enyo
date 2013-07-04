@@ -1,15 +1,17 @@
 enyo.kind({
 	name: "KindTest",
 	kind: enyo.TestSuite,
+	noDefer: true,
 	testNamespace: function() {
 		enyo.kind({name: "custom.Namespace"});
+		/* global custom */
 		Boolean(custom.Namespace); // throws an exception if namespace is undefined (Boolean() is just for lint)
 		this.finish();
 	},
 	testNullKind: function() {
 		// should succeed as this is allowed
 		var K = enyo.kind({kind: null});
-		var i = new K({});
+		new K({});
 		this.finish();
 	},
 	testUndefinedKind: function() {

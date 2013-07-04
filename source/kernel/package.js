@@ -1,13 +1,21 @@
 enyo.depends(
 	"log.js",
 	"lang.js",
+	"pool.js",
+	"dev.js",
 	"job.js",
-	"macroize.js",
-	"animation.js",
 	"Oop.js",
+	"mixins",
+	"Binding.js",
 	"Object.js",
 	"Component.js",
 	"UiComponent.js",
 	"Layout.js",
-	"Signals.js"
+	"Signals.js",
+	"MultipleDispatchComponent.js",
+	"Controller.js",
+	"Router.js",
+	"ViewController.js",
+	"Application.js",
+	"data"
 );

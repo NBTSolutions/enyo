@@ -2,31 +2,49 @@
 	_enyo.UiComponent_ implements a container strategy suitable for presentation
 	layers.
 
-	UiComponent itself is abstract.  Concrete subkinds include
+	UiComponent itself is abstract. Concrete subkinds include
 	<a href="#enyo.Control">enyo.Control</a> (for HTML/DOM) and
 	<a href="#enyo.canvas.Control">enyo.canvas.Control</a>
 	(for Canvas contexts).
 */
 enyo.kind({
 	name: "enyo.UiComponent",
-	kind: enyo.Component,
+	kind: "enyo.Component",
 	published: {
-		//* the UiComponent that physically contains this component in the DOM
+		//* The UiComponent that physically contains this component in the DOM
 		container: null,
-		//* the UiComponent that owns this component for the purpose of event propogation
+		/**
+			The UiComponent that owns this component for purposes of event
+			propagation
+		*/
 		parent: null,
-		//* the UiComponent that will physically contain new items added using createComponent
+		/**
+			The UiComponent that will physically contain new items added by
+			calls to _createComponent_
+		*/
 		controlParentName: "client",
-		//* a kind used to manage the size and placement of child components
+		//* A kind used to manage the size and placement of child components
 		layoutKind: ""
 	},
 	handlers: {
 		onresize: "resizeHandler"
 	},
+	/**
+		When set, provides a control reference used to indicate where a
+		newly-created component should be added in the UiComponent's array of
+		children. This is typically used when dynamically creating children
+		(rather than at design time). If set to null, the new control will be
+		added at the beginning of the array; if set to a specific existing
+		control, the new control will be added before the specified control. If
+		left undefined, the default behavior is to add the new control at the
+		end of the array.
+	*/
+	addBefore: undefined,
 	//* @protected
-	statics: {
+	protectedStatics: {
 		_resizeFlags: {showingOnly: true} // don't waterfall these events into hidden controls
 	},
+
 	create: function() {
 		this.controls = [];
 		this.children = [];
@@ -51,7 +69,7 @@ enyo.kind({
 	},
 	// As implemented, _controlParentName_ only works to identify an owned
 	// control created via _createComponents_ (i.e., usually in our _components_
-	// block).  To attach a _controlParent_ via other means, one must call
+	// block).	To attach a _controlParent_ via other means, one must call
 	// _discoverControlParent_ or set _controlParent_ directly.
 	//
 	// We could call _discoverControlParent_ in _addComponent_, but it would
@@ -67,24 +85,7 @@ enyo.kind({
 	adjustComponentProps: function(inProps) {
 		// Components we create have us as a container by default.
 		inProps.container = inProps.container || this;
-		/*
-		// the 'property master' is the object responsible for adjusting component props
-		// which may not be the object on which component creation was invoked
-		// the first-order property master is our container (this by default)
-		var propMaster = inProps.container;
-		// if we are the first-order property master, our control parent (if it exists) is the second-order master
-		if (propMaster == this) {
-			propMaster = this.controlParent || propMaster;
-		}
-		// if the property master is not us, delegate to him
-		if (propMaster != this) {
-			propMaster.adjustComponentProps(inProps);
-		}
-		// otherwise, do the usual
-		else {
-		*/
-			this.inherited(arguments);
-		//}
+		this.inherited(arguments);
 	},
 	// containment
 	containerChanged: function(inOldContainer) {
@@ -92,7 +93,7 @@ enyo.kind({
 			inOldContainer.removeControl(this);
 		}
 		if (this.container) {
-			this.container.addControl(this);
+			this.container.addControl(this, this.addBefore);
 		}
 	},
 	// parentage
@@ -143,11 +144,16 @@ enyo.kind({
 		// Called to add an already created control to the object's control list. It is
 		// not used to create controls and should likely not be called directly.
 		// It can be overridden to detect when controls are added.
-		this.controls.push(inControl);
+		if (inBefore !== undefined) {
+			var idx = (inBefore === null) ? 0 : this.indexOfChild(inBefore);
+			this.controls.splice(idx, 0, inControl);
+		} else {
+			this.controls.push(inControl);
+		}
 		// When we add a Control, we also establish a parent.
 		this.addChild(inControl, inBefore);
 	},
-    removeControl: function(inControl) {
+	removeControl: function(inControl) {
 		// Called to remove a control from the object's control list. As with addControl it
 		// can be overridden to detect when controls are removed.
 		// When we remove a Control, we also remove it from its parent.
@@ -171,9 +177,9 @@ enyo.kind({
 	},
 	// children
 	addChild: function(inChild, inBefore) {
-		// if inBefore is undefined, use the old behavior of adding to front
-		// or end of children based in this.prepend property. if it's null,
-		// add to end, otherwise add before the specified control.
+		// if inBefore is undefined, add to the end of the child list.
+		// If it's null, add to front of list, otherwise add before the
+		// specified control.
 		//
 		// allow delegating the child to a different container
 		if (this.controlParent /*&& !inChild.isChrome*/) {
@@ -192,21 +198,12 @@ enyo.kind({
 			// Set the child's parent property to this
 			inChild.setParent(this);
 			// track in children array
-			if (inBefore === undefined) {
-				this.children[this.prepend ? "unshift" : "push"](inChild);
-			} else if (inBefore === null) {
-				// this case is needed to allow adding to end when this.prepend is true
-				this.children.push(inChild);
-			} else {
-				var idx = this.indexOfChild(inBefore);
+			if (inBefore !== undefined) {
+				var idx = (inBefore === null) ? 0 : this.indexOfChild(inBefore);
 				this.children.splice(idx, 0, inChild);
+			} else {
+				this.children.push(inChild);
 			}
-			/*
-			// FIXME: hacky, allows us to reparent a rendered control; we need better API for dynamic reparenting
-			if (inChild.hasNode()) {
-				inChild[this.prepend ? "_prepend" : "_append"]();
-			}
-			*/
 		}
 	},
 	removeChild: function(inChild) {
@@ -247,7 +244,7 @@ enyo.kind({
 	},
 	//* @protected
 	resizeHandler: function() {
-		// FIXME: once we are in the business of reflowing layouts on resize, then we have an 
+		// FIXME: once we are in the business of reflowing layouts on resize, then we have an
 		// inside/outside problem: some scenarios will need to reflow before child
 		// controls reflow, and some will need to reflow after. Even more complex scenarios
 		// have circular dependencies, and can require multiple passes or other resolution.
@@ -257,39 +254,40 @@ enyo.kind({
 	/**
 		Sends a message to all my descendents.
 	*/
-	waterfallDown: function(inMessage, inPayload, inSender) {
+	waterfallDown: function(name, event, sender) {
+		event = event || {};
 		// Note: Controls will generally be both in a $ hash and a child list somewhere.
 		// Attempt to avoid duplicated messages by sending only to components that are not
 		// UiComponent, as those components are guaranteed not to be in a child list.
-		// May cause a problem if there is a scenario where a UiComponent owns a pure 
+		// May cause a problem if there is a scenario where a UiComponent owns a pure
 		// Component that in turn owns Controls.
 		//
 		// waterfall to all pure components
 		for (var n in this.$) {
 			if (!(this.$[n] instanceof enyo.UiComponent)) {
-				this.$[n].waterfall(inMessage, inPayload, inSender);
+				this.$[n].waterfall(name, event, sender);
 			}
 		}
 		// waterfall to my children
 		for (var i=0, cs=this.children, c; (c=cs[i]); i++) {
-			// Do not send {showingOnly: true} events to hidden controls. This flag is set for resize events 
+			// Do not send {showingOnly: true} events to hidden controls. This flag is set for resize events
 			// which are broadcast from within the framework. This saves a *lot* of unnecessary layout.
-			// TODO: Maybe remember that we did this, and re-send those messages on setShowing(true)? 
+			// TODO: Maybe remember that we did this, and re-send those messages on setShowing(true)?
 			// No obvious problems with it as-is, though
-			if (c.showing || !(inPayload && inPayload.showingOnly)) {
-				c.waterfall(inMessage, inPayload, inSender);
+			if (c.showing || !(event && event.showingOnly)) {
+				c.waterfall(name, event, sender);
 			}
 		}
 	},
 	getBubbleTarget: function() {
-		return this.parent;
+		return this._bubble_target || this.parent || this.owner;
 	}
 });
 
 enyo.createFromKind = function(inKind, inParam) {
-	var ctor = inKind && enyo.constructorForKind(inKind);
-	if (ctor) {
-		return new ctor(inParam);
+	var Ctor = inKind && enyo.constructorForKind(inKind);
+	if (Ctor) {
+		return new Ctor(inParam);
 	}
 };
 
@@ -309,7 +307,7 @@ enyo.master = new enyo.Component({
 	},
 	isDescendantOf: enyo.nop,
 	bubble: function(inEventName, inEvent, inSender) {
-		//console.log("master event: " + inEventName);
+		//enyo.log("master event: " + inEventName);
 		if (inEventName == "onresize") {
 			// Resize is special; waterfall this message.
 			// This works because master is a Component, so it waterfalls

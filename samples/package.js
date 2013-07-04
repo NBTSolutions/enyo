@@ -1,7 +1,6 @@
 enyo.depends(
-	"$lib/extra/exampler",
-	"Playground.css",
-	"Playground.js",
+	"PlatformSample.css",
+	"PlatformSample.js",
 	"AjaxSample.css",
 	"AjaxSample.js",
 	"JsonpSample.css",
@@ -11,5 +10,13 @@ enyo.depends(
 	"RepeaterSample.css",
 	"RepeaterSample.js",
 	"ScrollerSample.css",
-	"ScrollerSample.js"
+	"ScrollerSample.js",
+	"GestureSample.css",
+	"GestureSample.js",
+	"DrawerSample.css",
+	"DrawerSample.js",
+	"FullscreenSample.css",
+	"FullscreenSample.js",
+	"AudioSample.css",
+	"AudioSample.js"
 );

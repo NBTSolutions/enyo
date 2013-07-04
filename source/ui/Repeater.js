@@ -20,11 +20,9 @@
 	Be sure to return _true_ from your _onSetupItem_ handler to avoid having
 	other event handlers further up the tree try to modify your item control.
 
-	The repeater will always be rebuilt after a call to _setCount_, even if the
-	count didn't change.  This behavior differs from that of most properties,
-	for which no action happens when a set-value call doesn't modify the value.
-	This is done to accomodate potential changes to the data model for the
-	repeater, which may happen to have the same item count as before.
+	For more information, see the documentation on
+	[Lists](https://github.com/enyojs/enyo/wiki/Lists) in the Enyo Developer
+	Guide.
 */
 enyo.kind({
 	name: "enyo.Repeater",
@@ -35,9 +33,9 @@ enyo.kind({
 	events: {
 		/**
 			Fires when each item is created.
-			
+
 			_inEvent.index_ contains the item's index.
-			
+
 			_inEvent.item_ contains the item control, for decoration.
 		*/
 		onSetupItem: ""
@@ -51,9 +49,6 @@ enyo.kind({
 		this.itemComponents = this.components || this.kindComponents;
 		this.components = this.kindComponents = null;
 		this.inherited(arguments);
-	},
-	setCount: function(inCount) {
-		this.setPropertyValue("count", inCount, "countChanged");
 	},
 	countChanged: function() {
 		this.build();
@@ -97,10 +92,25 @@ enyo.kind({
 	tag: null,
 	decorateEvent: function(inEventName, inEvent, inSender) {
 		if (inEvent) {
-			inEvent.index = this.index;
+			// preserve an existing index property.
+			if (enyo.exists(inEvent.index)) {
+				// if there are nested indices, store all of them in an array
+				// but leave the innermost one in the index property
+				inEvent.indices = inEvent.indices || [inEvent.index];
+				inEvent.indices.push(this.index);
+			} else {
+				// for a single level, just decorate the index property
+				inEvent.index = this.index;
+			}
+			// update delegate during bubbling to account for proxy
+			// by moving the delegate up to the repeater level
+			if (inEvent.delegate && inEvent.delegate.owner === this) {
+				inEvent.delegate = this.owner;
+			}
 		}
 		this.inherited(arguments);
 	},
+	// extending enyo.Component.delegateEvent
 	delegateEvent: function(inDelegate, inName, inEventName, inEvent, inSender) {
 		if (inDelegate == this) {
 			inDelegate = this.owner.owner;

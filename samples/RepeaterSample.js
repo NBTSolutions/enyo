@@ -20,6 +20,8 @@ enyo.kind({
 		item.$.personNumber.setContent((index+1) + ". ");
 		item.$.personName.setContent(person.name);
 		item.$.personName.applyStyle("color", person.sex == "male" ? "dodgerblue" : "deeppink");
+		/* stop propagation */
+		return true;
 	},
 	people: [
 		{name: "Andrew", sex:"male"},
@@ -47,6 +49,6 @@ enyo.kind({
 		{name: "Wendy", sex:"female"},
 		{name: "Xin", sex:"male"},
 		{name: "Yulia", sex:"female"},
-		{name: "Zoltan"},
+		{name: "Zoltan"}
 	]
 });

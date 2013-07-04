@@ -31,12 +31,12 @@ enyo.kind({
 			},
 			dragFinish: function(inSender, inEvent) {
 				this.$.dragAvatar.hide();
-			}			
+			}
 		});
 */
 enyo.kind({
 	name: "enyo.DragAvatar",
-	kind: enyo.Component,
+	kind: "enyo.Component",
 	published: {
 		//* Current visibility state of the DragAvatar
 		showing: false,
